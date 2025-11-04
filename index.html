@@ -7,6 +7,12 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+    
+    <!-- KaTeX for LaTeX rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    
     <style>
         :root {
             --bg-primary: #ffffff;
@@ -331,6 +337,17 @@
             margin: 32px 0;
         }
 
+        /* LaTeX公式样式 */
+        .reader-content .katex-display {
+            margin: 20px 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        .reader-content .katex {
+            font-size: 1.1em;
+        }
+
         /* 高亮样式 */
         .highlight-yellow { background: #fef3c7; }
         .highlight-green { background: #d1fae5; }
@@ -637,7 +654,7 @@
                     <div class="empty-state">
                         <div class="empty-state-icon">📄</div>
                         <div class="empty-state-text">选择或上传一个 Markdown 文件开始阅读</div>
-                        <div class="empty-state-subtext">支持 .md 和 .txt 格式</div>
+                        <div class="empty-state-subtext">支持 .md 和 .txt 格式，完整支持LaTeX数学公式</div>
                     </div>
                 </div>
             </div>
@@ -743,10 +760,8 @@
             async deleteFile(id) {
                 const tx = AppState.db.transaction(['files', 'notes', 'highlights'], 'readwrite');
                 
-                // 删除文件
                 tx.objectStore('files').delete(id);
                 
-                // 删除相关笔记
                 const notesIndex = tx.objectStore('notes').index('fileId');
                 const notesRequest = notesIndex.openCursor(IDBKeyRange.only(id));
                 notesRequest.onsuccess = (e) => {
@@ -757,7 +772,6 @@
                     }
                 };
                 
-                // 删除相关高亮
                 const highlightsIndex = tx.objectStore('highlights').index('fileId');
                 const highlightsRequest = highlightsIndex.openCursor(IDBKeyRange.only(id));
                 highlightsRequest.onsuccess = (e) => {
@@ -808,7 +822,6 @@
                 const store = tx.objectStore('highlights');
                 const index = store.index('fileId');
                 
-                // 先删除该文件的所有高亮
                 const deleteRequest = index.openCursor(IDBKeyRange.only(fileId));
                 deleteRequest.onsuccess = (e) => {
                     const cursor = e.target.result;
@@ -818,7 +831,6 @@
                     }
                 };
                 
-                // 添加新的高亮
                 await tx.complete;
                 const tx2 = AppState.db.transaction(['highlights'], 'readwrite');
                 const store2 = tx2.objectStore('highlights');
@@ -908,10 +920,25 @@
             await restoreHighlights();
         }
 
-        // 渲染 Markdown
+        // 渲染 Markdown（支持LaTeX）
         function renderMarkdown(content) {
             const readerContent = document.getElementById('readerContent');
-            readerContent.innerHTML = marked.parse(content);
+            
+            // 先用marked渲染markdown
+            let html = marked.parse(content);
+            readerContent.innerHTML = html;
+            
+            // 使用KaTeX渲染LaTeX公式
+            renderMathInElement(readerContent, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ],
+                throwOnError: false,
+                strict: false
+            });
             
             // 为所有段落和标题添加索引
             const elements = readerContent.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
@@ -1118,7 +1145,6 @@
                 </div>
             `).join('');
             
-            // 标记有笔记的元素
             const readerContent = document.getElementById('readerContent');
             notes.forEach(note => {
                 const el = readerContent.querySelector(`[data-index="${note.elementIndex}"]`);
